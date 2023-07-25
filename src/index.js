@@ -1,5 +1,6 @@
 // Assumption:
 // Doc wont shop with same pair of (email, phoneNumber) details
+// Doc will specify atleast one field of (email, phoneNumber) i.e both cant be null
 
 
 const express = require("express");
@@ -42,6 +43,7 @@ const q = `create table if not exists Contacts (
     deletedAt datetime
 )`;
 
+// DB table creation for the firsttime
 db.query(q, (err, _) => {
     if(err) {
         console.error("Error creating Contacts table: ", err);
@@ -54,9 +56,10 @@ db.query(q, (err, _) => {
 const initHandler = async (req, res, next) => {
     const email = req.body.email;
     const phoneNumber = req.body.phoneNumber;
+    // Check if any of the details are null. If so, then process it in next middleware method.
     if(email === null || phoneNumber === null)
         next();
-    else {
+    else {                    
         try {
             const emailResults = await new Promise((resolve, rej) => {
                 db.query(`select * from Contacts where email = "${email}"`, (err, results) => {
@@ -78,14 +81,13 @@ const initHandler = async (req, res, next) => {
             });
             const phoneNumberExists = phoneNumberResults.length > 0;
             if(!emailExists || !phoneNumberExists) {
-                console.log("One of them is not seen");
                 next();
             }
-            else {
-                console.log("Some row already has the same set of values");
+            else {              
+                // This purchase has same email from other purchase and phoneNumber from someother purchase 
+                // So this purchase will be primary purchase.
                 const createdAt = JsDateToMySQLDate(new Date());
                 const updatedAt = createdAt;
-                console.log("first")
                 await new Promise((resolve, rej) => {
                     db.query(`insert into Contacts (phoneNumber, email, linkedId, linkPrecedence, createdAt, updatedAt, deletedAt) 
                                 values ("${phoneNumber}", "${email}", null, 'primary', "${createdAt}", "${updatedAt}", null)
@@ -99,7 +101,6 @@ const initHandler = async (req, res, next) => {
                         }
                     });
                 });
-                console.log("second")
                 const id = await new Promise((resolve, rej) => {
                     db.query(`select id from Contacts where phoneNumber = "${phoneNumber}" and email = "${email}"`, function(err, results) {
                         if(err) {
@@ -129,6 +130,8 @@ const initHandler = async (req, res, next) => {
     }
 };
 
+
+// Handles null valued purchases and processes if this purchase is primary or secondary.
 const firstMiddleWare = async(req, res, next) => {
     let email = req.body.email;
     let phoneNumber = req.body.phoneNumber;
@@ -198,6 +201,8 @@ const firstMiddleWare = async(req, res, next) => {
     }
 };
 
+
+// Handles the processing of response that needs to be sent
 const finalProcessing = async (req, res) => {
     const email = req.body.email;
     const phoneNumber = req.body.phoneNumber;
